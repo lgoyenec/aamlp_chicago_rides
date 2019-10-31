@@ -46,7 +46,7 @@ Four group of data sets will be combined for the analysis. The first group consi
 Table 1 presents a summary of the primary data sets require for the analysis. As observed, taxi and ride share trips records go up to 187 and 101 million observations dating back to 2013. However, for data manipulation purposes, we limit our observations to two months period (September 01 to October 31, 2019). In addition, in order to align all time variant data sets, we also selected the incidents of crime in the same time period.
 
 \begin{table}[h]
-\caption{Data sets characteristics\strut}
+\caption{Data sets characteristics\footnote{Github repository: \url{https://github.com/lgoyenec/aamlp_chicago_rides}}\strut}
 \bigskip
 \centering 
 \makebox[\textwidth]{\begin{tabular}{l c c c c c c}
@@ -79,7 +79,7 @@ Given the multiple data sets, first we will evaluate whether to exclude and impu
 
 This analysis will look to predict the geography-specific likelihood of a public taxi or a ride-sharing service picking up a given passenger, and the geography-specific cost for each of those services. We hope to compare cost differences between the two types of services in relation to crime statistics in the pickup and drop-off areas.\\
 
-The empirical analysis is based on predicting the likelihood of a public taxi or a ride-sharing trip given the geographic-specific crime risk. Formally, our outcome ($Y_i$) is one for ride-sharing trips and zero for taxi trips. We will determine the importance of the number or proportion of crimes around the pickup and/or drop-off location ($C_i$), and a group of covariates such as location (police beats, community area or district) and city characteristics ($X_i$) on this outcome, as well as on another set of outcomes: $Price_t$ and $Price_r$. Note that the sample of interest is limited to trips in Chicago in a specific period ($W$). \\
+The empirical analysis is based on predicting the likelihood of a public taxi or a ride-sharing trip given the geographic-specific crime risk. Formally, we'll implement a observational longitudinal study. Our outcome ($Y_i$) is one for ride-sharing trips and zero for taxi trips. We will determine the importance of the number or proportion of crimes around the pickup and/or drop-off location ($C_i$), and a group of covariates such as location (police beats, community area or district) and city characteristics ($X_i$) on this outcome, as well as on another set of outcomes: $Price_t$ and $Price_r$. Note that the sample of interest is limited to trips in Chicago in a specific period ($W$). \\
 
 To achieve this we will utilize logistic regression, regularized regression, gradient boosting, and neural networks. After comparing outcomes we will choose the best method for each of our two tasks. We will use ROC plots and AUC to determine the usefulness of our taxi/ride-sharing pick-up predictions, regularized regression for variable selection and analysis of variable important to determine if crime is important in predicting whether an individual uses a taxi or a ride share service. \\
 
