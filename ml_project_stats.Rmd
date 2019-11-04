@@ -24,7 +24,8 @@ libs = c('httr','jsonlite',
          'knitr','kableExtra',
          'fastDummies',
          'papeR',
-         'ggcorrplot','plotly','GGally')
+         'ggcorrplot','plotly','GGally',
+         'leaflet')
 
 # Attach libraries
 invisible(suppressMessages(lapply(libs, library, character.only = T)))
@@ -32,7 +33,7 @@ invisible(suppressMessages(lapply(libs, library, character.only = T)))
 
 ```{r}
 # Working directory
-cd = 'C:/Users/lgoye/OneDrive/Education/CarnegieMellonUniversity/PPMDACourses/95845_ML_Pipeline/Final Project'
+cd = 'C:/Users/lgoye/OneDrive/Documents/Github/aamlp_chicago_rides'
 setwd(cd)
 
 # Import data
@@ -53,30 +54,31 @@ setwd(cd)
 # Taxi trips
 
 names(df_taxi) = tolower(names(df_taxi))
+names(df_taxi) = gsub(".", "_", names(df_taxi), fixed = T)
 
 taxi = 
   df_taxi %>%
   
-    # # Create time variables: year, month, hour
-    # mutate(date_start = ymd_hms(trip.start.timestamp),
-    #        date_end   = ymd_hms(trip.end.timestamp),
-    #        year       = year(date_start),
-    #        month      = month(date_start)) %>%
-    # 
-    # # Remove timestamp variables and pickup location
-    # select(-trip.start.timestamp, 
-    #        -trip.end.timestamp,
-    #        -pickup.centroid.location,
-    #        -dropoff.centroid.location) %>%
-    # 
-    # # Generate factor variables
-    # mutate(payment_type = as.factor(payment.type),
-    #        company      = as.factor(company),
-    #        trip_id      = as.factor(trip.id),
-    #        taxi_id      = as.factor(taxi.id)) %>%
+    # Create time variables: year, month, hour
+    mutate(date_start = mdy_hms(trip_start_timestamp %>% as.character()),
+           date_end   = mdy_hms(trip_end_timestamp %>% as.character()),
+           year       = year(date_start),
+           month      = month(date_start)) %>%
+
+    # Remove timestamp variables and pickup location
+    select(-trip_start_timestamp,
+           -trip_end_timestamp,
+           -pickup_centroid_location,
+           -dropoff_centroid__location) %>%
+
+    # Generate factor variables
+    mutate(payment_type = as.factor(payment_type),
+          company      = as.factor(company),
+          trip_id      = as.factor(trip_id),
+          taxi_id      = as.factor(taxi_id)) %>%
   
-  # Destring numeric variables
-  mutate_if(is.character, as.numeric)
+    # Destring numeric variables
+    mutate_if(is.character, as.numeric)
 
 # Ridesharing trips
 names(df_other) = tolower(names(df_other))
@@ -92,7 +94,36 @@ crime =
   
 ```
 
-## Taxi trips {.tabset .tabset-fade .tabset-pills}
+## Taxi trips
+### General summary 
+```{r, warning = F, message = F}
+taxi %>%
+  select(-pickup_census_tract, 
+         -pickup_community_area,
+         -pickup_centroid_latitude,
+         -pickup_centroid_longitude,
+         -dropoff_census_tract,
+         -dropoff_community_area,
+         -dropoff_centroid_latitude,
+         -dropoff_centroid_longitude) %>%
+  select_if(is.numeric) %>% 
+  as.data.frame() %>%
+  papeR::summarize(show.NAs = T) %>%
+  kable() %>%
+  kable_styling(full_width = F)
+```
+
+```{r}
+# From the general summary we can observe that they are trip that last almost a day and that the trip miles is 25 times the maximum number of miles from south-north and west-east in Chicago. Given that we filter by:
+  # Maximum number of miles: 35 miles
+  # Maximum trip duration: 1h
+
+taxi =
+  taxi %>%
+  filter(trip_miles < 35,
+         trip_seconds < 3600)
+```
+
 ### Summary of NAs
 ```{r, warning = F, message = F}
 taxi %>%
@@ -105,49 +136,122 @@ taxi %>%
   kable_styling(full_width = F)
 ```
 
-### Correlation
-```{r, warning = F, message = F, fig.align = "center", fig.height = 6, fig.width = 8}
-df_taxi %>%
-  select(trip_seconds,
-         trip_miles, 
-         fare, 
-         tips, 
-         extras, 
-         trip_total) %>%
-  ggpairs(aes(color = I("#E1A533")),
-          columnLabels = c("Trip Sec", "Trip Miles", "Fare", "Tips", "Extras", "Trip Total")) + 
-  theme_bw()
+```{r}
+# NA Taxi id and prices (fare, tips, tolls, extras and total) correlated? No! 
+table(is.na(taxi$taxi_id), is.na(taxi$tips)) %>%
+  kable() %>%
+  kable_styling(full_width = F)
 ```
 
-### Top 10 pickup CA
-```{r, fig.align = "center"}
-df_taxi %>%
+### Distribution of trips across hours
+```{r, warning = F, message = F}
+taxi %>%
+  # Pickup hour
+  mutate(hour_start = format(date_start, "%H:%M")) %>%
+  
+  # Count number of trip by hour
+  group_by(hour_start) %>%
+  summarise(freq = n()) %>%
+  rename(hour = hour_start) %>%
+  mutate(category = "Pickup hour") %>%
+
+  bind_rows(
+    taxi %>%
+    
+      # Dropoff hour
+      mutate(hour_end = format(date_end, "%H:%M")) %>%
+      group_by(hour_end) %>%
+      summarise(freq = n()) %>%
+      rename(hour = hour_end) %>%
+      mutate(category = "Dropoff hour")
+  ) %>%
+    
+  # Scatter plot
+  plot_ly(x      =~ hour, 
+          y      =~ freq, 
+          color  =~ category, 
+          colors = c("#FAA916","#02040F"),
+          type   = "scatter", 
+          mode   = "marker") %>%
+  layout(xaxis   = list(title = "Hour"),
+         yaxis   = list(title = "Number of taxi trips"))
+  
+```
+
+### Top 10 pickup and dropoff CA
+```{r, warning = F, message = F}
+taxi %>%
+  # Count number of trips by pickup community area
   filter(!is.na(pickup_community_area)) %>%
   group_by(pickup_community_area) %>%
   summarise(freq = n()) %>%
+  
+  # Select top 10
   arrange(-freq) %>%
   head(n = 10) %>%
-  mutate(pickup_community_area = as.character(pickup_community_area)) %>%
-  ggplot(aes(x = pickup_community_area, y = freq)) + 
-  geom_text(aes(label = freq), vjust = -0.3) +
-  geom_bar(fill = '#FAA916', stat = 'identity')
+  
+  rename(com_area = pickup_community_area) %>%
+  mutate(category = "Pickup") %>%
+  
+  # Append number of trips by dropoff community area
+  bind_rows(
+    
+    taxi %>% 
+    filter(!is.na(dropoff_community_area)) %>%
+    group_by(dropoff_community_area) %>%
+    summarise(freq = n()) %>%
+    
+    # Select top 10
+    arrange(-freq) %>%
+    head(n = 10) %>%
+    
+    rename(com_area = dropoff_community_area) %>%
+    mutate(category = "Dropoff")
+  ) %>% 
+  
+  # Bar plot
+  plot_ly(x      =~ com_area, 
+          y      =~ freq, 
+          type   = "bar",
+          color  =~ category,
+          colors = c("#FAA916","#02040F")) %>%
+  layout(xaxis   = list(title = "Community Area",
+                        type  = "category"),
+         yaxis   = list(title = "Number of taxi trips"),
+         legend  = list(x = 0.4, y = 0.95, orientation = 'h'))
+  
 ```
 
-### Top 10 dropoff CA
-```{r, fig.align = "center"}
-df_taxi %>%
-  filter(!is.na(dropoff_community_area)) %>%
-  group_by(dropoff_community_area) %>%
-  summarise(freq = n()) %>%
-  arrange(-freq) %>%
-  head(n = 10) %>%
-  mutate(dropoff_community_area = as.character(dropoff_community_area)) %>%
-  ggplot(aes(x = dropoff_community_area, y = freq)) + 
-  geom_text(aes(label = freq), vjust = -0.3) +
-  geom_bar(fill = '#FAA916', stat = 'identity')
+### Map pickup
+```{r}
+# By changing pickup for dropoff we ended up with the same map
+taxi %>%
+  
+  # Latitude and longitude of centroid, not exact location of pickup
+  # Collapse by latitude and longitude
+  filter(!is.na(pickup_centroid_latitude)) %>%
+  group_by(pickup_centroid_latitude, pickup_centroid_longitude) %>%
+  summarise(freq = n()) %>% 
+  
+  mutate(category = "pickup") %>%
+  rename(lat = pickup_centroid_latitude, 
+         lon = pickup_centroid_longitude) %>%
+  
+  # Map
+  leaflet() %>%
+  setView(lng  = -87.629799, 
+          lat  =  41.878113, 
+          zoom = 12) %>%
+  addTiles() %>%
+  addCircleMarkers(lng         =~ lon,
+                   lat         =~ lat, 
+                   radius      =~ freq/10000, 
+                   color       = I("#BA1B1D"), 
+                   stroke      = T, 
+                   fillOpacity = 0.8)
 ```
 
-## Other providers {.tabset .tabset-fade .tabset-pills}
+## Other providers
 ### Summary of NAs
 ```{r, warning = F, message = F}
 other %>%
@@ -160,7 +264,21 @@ other %>%
   kable_styling(full_width = F)
 ```
 
-## Crime {.tabset .tabset-fade .tabset-pills}
+## Crime
+### General summary 
+```{r, warning = F, message = F}
+crime %>%
+  select(-x.coordinate,
+         -y.coordinate, 
+         -latitude, 
+         -longitude) %>%
+  select_if(is.numeric) %>% 
+  as.data.frame() %>%
+  papeR::summarize(show.NAs = T) %>%
+  kable() %>%
+  kable_styling(full_width = F)
+```
+
 ### Summary of NAs
 ```{r, warning = F, message = F}
 crime %>%
@@ -172,7 +290,6 @@ crime %>%
   kable(col.names = c("","Number of NAs")) %>%
   kable_styling(full_width = F)
 ```
-
 
 
 
