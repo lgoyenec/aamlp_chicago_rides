@@ -52,6 +52,7 @@ crime =
   # Remove variables 
   select(-case_number,
          -block,
+         -description,
          -iucr,
          -fbi_code,
          -x_coordinate, 
@@ -64,7 +65,22 @@ crime =
   
   # Create hour start trip
   mutate(hm_start = format(date, "%H:%M"),
-         h_start  = format(date, "%H"))
+         h_start  = format(date, "%H")) %>%
+  
+  # Arrest and Domestic as dummies
+  mutate(arrest   = ifelse(arrest   == "true", 1, 0), 
+         domestic = ifelse(domestic == "true", 1, 0))
+
+# Create dummy variables for primary_type
+crime = dummy_cols(crime, "primary_type", remove_first_dummy = T)
+
+# Transformation of variables' name
+names(crime) = tolower(names(crime))
+names(crime) = gsub("primary_type", "pt", names(crime), fixed = T)
+
+crime = 
+  crime %>%
+  rename(primary_type = pt)
 
 # Summary NAs
 # --------------------------------------------------------------
