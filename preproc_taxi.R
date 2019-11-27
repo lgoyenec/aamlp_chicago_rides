@@ -30,12 +30,8 @@ setwd(cd)
 # Import data
 # City of Chicago
   # Taxi trips: 1.3 out of 187 million observations 
-  # Other providers trips: 8.9 out of 101 million observations
-  # Crime in Chicago: 35,494 out of 7 million observations
-  
+
   df_taxi  = readRDS(paste0(cd, '/data_rds/df_taxi.rds'))
-  #df_other = readRDS(paste0(cd, '/data_rds/df_other.rds'))
-  #df_crime = readRDS(paste0(cd, '/data_rds/df_crime.rds'))
 
 # Data pre-processing 
 # --------------------------------------------------------------
