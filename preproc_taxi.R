@@ -131,7 +131,7 @@ table(taxi$h_start, is.na(taxi$pickup_community_area)) %>%
   rename(No    = `FALSE`,
          Yes   = `TRUE`)
 
-  # Using just the we observe that between 7:00 - 9:00 and 16:00 they're more NA
+  # Using just the hour, we observe that between 7:00 - 9:00 and 16:00 they're more NA
 
 # Census tract
 table(taxi$day, is.na(taxi$pickup_census_tract)) %>%
@@ -158,7 +158,7 @@ table(taxi$h_start, is.na(taxi$pickup_census_tract)) %>%
   rename(No    = `FALSE`,
          Yes   = `TRUE`)
 
-  # Just by hour we observe the same pattern 
+  # By hour we observe a higher proportion of NA betwwn 22:00 and 6:00
   # Higher NA early morning and late night
 
 # Part 2:
