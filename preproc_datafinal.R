@@ -29,6 +29,11 @@ df_crime  = readRDS(paste0(cd, '/data_rds/df_crime_imputed.rds'))
   # Rename variables
   names(df_taxi)  = gsub("_imputed", "", names(df_taxi), fixed = T)
   names(df_other) = gsub("_imputed", "", names(df_other), fixed = T)
+  
+  # Add variable id_ride 
+  # id_ride = 1 if ride sharing, 0 otherwise
+  df_taxi  = df_taxi %>% mutate(id_ride = 0)
+  df_other = df_other %>% mutate(id_ride = 0)
 
 # Import shapefile
 sh_census = readOGR(dsn    = paste0(cd, '/data_shp'), 
@@ -127,5 +132,8 @@ df_final =
                select(-shared_trip_authorized,
                       -trips_pooled))) %>%
   replace(., is.na(.), 0)
+
+# Save data final in RDS format
+saveRDS(df_final , paste0(cd, '/data_rds/df_final.rds'))
 
 # --------------------------------------------------------------
