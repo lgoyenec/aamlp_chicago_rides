@@ -284,9 +284,9 @@ NA_val =
          select(trip_miles,
                 pickup_census_tract,
                 dropoff_census_tract), 
-       m      = 2,
-       maxit  = 2, 
-       method = "mean")
+       m      = 1,
+       maxit  = 1, 
+       method = "sample")
 
 # Get imputed data
 imput = 

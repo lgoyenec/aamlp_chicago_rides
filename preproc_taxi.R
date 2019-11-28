@@ -63,8 +63,7 @@ taxi =
   # Generate factor variables
   mutate(payment_type = as.factor(payment_type),
          company      = as.factor(company),
-         trip_id      = as.factor(trip_id),
-         taxi_id      = as.factor(taxi_id)) %>%
+         trip_id      = as.factor(trip_id)) %>%
   
   # Destring numeric variables
   mutate_if(is.character, as.numeric) %>%
@@ -282,7 +281,10 @@ taxi =
   taxi %>% 
   
   # Drop ~6.2% of the observations
-  filter(!is.na(pickup_community_area), !is.na(dropoff_community_area))
+  filter(!is.na(pickup_community_area), !is.na(dropoff_community_area)) %>%
+
+  # Remove taxi_id
+  select(-taxi_id)
 
 rm(df.in)
 
@@ -304,13 +306,11 @@ NA_cont =
 
 NA_cat = 
   mice(taxi %>%
-         select(taxi_id, 
-                pickup_census_tract,
-                dropoff_census_tract) %>%
-         mutate(taxi_id = as.numeric(taxi_id)),
-       m      = 2, 
-       maxit  = 2, 
-       method = "mean")
+         select(pickup_census_tract,
+                dropoff_census_tract),
+       m      = 1, 
+       maxit  = 1, 
+       method = "sample")
 
 # Get imputed data
 cont_imput = 
@@ -338,7 +338,6 @@ taxi_imput =
          -tolls, 
          -extras,
          -trip_total,
-         -taxi_id, 
          -pickup_census_tract,
          -dropoff_census_tract) %>%
   bind_cols(cont_imput, 
@@ -351,7 +350,6 @@ taxi_imput =
                             tolls,
                             extras,
                             trip_total,
-                            taxi_id,
                             pickup_census_tract,
                             dropoff_census_tract))) %>%
                      as_tibble() %>% 
