@@ -26,20 +26,40 @@ df_taxi   = readRDS(paste0(cd, '/data_rds/df_taxi_imputed.rds'))
 df_other  = readRDS(paste0(cd, '/data_rds/df_other_imputed.rds'))
 df_crime  = readRDS(paste0(cd, '/data_rds/df_crime_imputed.rds'))
 
-  # Rename variables
-  names(df_taxi)  = gsub("_imputed", "", names(df_taxi), fixed = T)
-  names(df_other) = gsub("_imputed", "", names(df_other), fixed = T)
-  
-  # Add variable id_ride 
-  # id_ride = 1 if ride sharing, 0 otherwise
-  df_taxi  = df_taxi %>% mutate(id_ride = 0)
-  df_other = df_other %>% mutate(id_ride = 0)
-
 # Import shapefile
 sh_census = readOGR(dsn    = paste0(cd, '/data_shp'), 
                    layer   = 'census_tract',
                    verbose = F)
 
+# Import census data 
+census = read.csv(paste0(cd, '/data_rds/census_data.csv'), header = T)
+
+# Pre processing 
+# --------------------------------------------------------------
+
+# Rename variables
+names(df_taxi)  = gsub("_imputed", "", names(df_taxi), fixed = T)
+names(df_other) = gsub("_imputed", "", names(df_other), fixed = T)
+
+# Add variable id_ride 
+# id_ride = 1 if ride sharing, 0 otherwise
+df_taxi  = df_taxi %>% mutate(id_ride = 0)
+df_other = df_other %>% mutate(id_ride = 1)
+
+# Modify census id
+
+names(census) = tolower(names(census))
+
+census = 
+  census %>%
+  mutate(id = 
+           id %>%
+           as.character() %>%
+           gsub("0800000US" , "", ., fixed = T) %>%
+           gsub("1400014000", "", ., fixed = T) %>%
+           as.numeric()) %>%
+  filter(!is.na(somecollege.rate),
+         !is.na(hrs.worked))
 
 # Classify crimes by census tract
 # --------------------------------------------------------------
@@ -101,36 +121,46 @@ crime =
 
 # Create temporary data for pickup and dropoff
 # Pickup
-  temp = crime 
-  names(temp) = paste0("pickup_", names(temp))
+  # Crime
+    temp = crime 
+    names(temp) = paste0("pickup_", names(temp))
+    
+    temp  = temp %>% rename(pickup_census_tract = pickup_census, day = pickup_day)
+    
+    taxi  = left_join(df_taxi , temp, by = c("pickup_census_tract","day"))
+    taxi  = taxi %>% replace(., is.na(.), 0)
+    
+      rm(df_taxi)
+    
+    other = left_join(df_other, temp, by = c("pickup_census_tract","day"))
+    other = other %>% replace(., is.na(.), 0)
+    
+      rm(df_other)
+    
+  # Census
+    temp = census 
+    names(temp) = paste0("pickup_", names(temp))
   
-  temp  = temp %>% rename(pickup_census_tract = pickup_census, day = pickup_day)
-  taxi  = left_join(df_taxi, temp, by = c("pickup_census_tract","day"))
-  other = left_join(df_other, temp, by = c("pickup_census_tract","day"))
-
-# Dropoff
-  temp = crime 
-  names(temp) = paste0("dropoff_", names(temp))
-  
-  temp  = temp %>% rename(dropoff_census_tract = dropoff_census, day = dropoff_day)
-  taxi  = left_join(taxi, temp, by = c("dropoff_census_tract","day"))
-  other = left_join(other, temp, by = c("dropoff_census_tract","day"))
-
+    temp = temp %>% rename(pickup_census_tract = pickup_id)
+    taxi  = left_join(taxi , temp, by = c("pickup_census_tract"))
+    other = left_join(other, temp, by = c("pickup_census_tract"))
+    
 rm(temp)
 
 # Append taxi and other (ride sharing services)
 # --------------------------------------------------------------
 df_final = 
   taxi %>%
-  select(-taxi_id,
-         -taxi_id_missing,
-         -tolls,
+  select(-tolls,
          -tolls_missing,
          -payment_type,
          -company) %>%
   bind_rows((other %>%
                select(-shared_trip_authorized,
-                      -trips_pooled))) %>%
+                      -trips_pooled))) 
+
+df_final = 
+  df_final %>%
   replace(., is.na(.), 0)
 
 # Save data final in RDS format
