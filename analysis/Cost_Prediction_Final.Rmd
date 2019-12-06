@@ -1,0 +1,143 @@
+---
+title: "Cost_Prediction_Final"
+author: "Nathan_Deron"
+date: "12/5/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("tidyverse")
+library("stringr")
+library("glmnet")
+library("Metrics")
+library("randomForest")
+library("xgboost")
+library("e1071")
+library("caret")
+library("ranger")
+library("xtable")
+setwd("~/CMU/Fall_2019/ML_Pipeline/Final Project")
+```
+
+Read in data
+```{r input}
+input <- readRDS("df_final.rds")
+```
+
+Clean data:
+1. Sample 10% of the data for model comparison. Since there are 8m rows for our time period of interest, we need to narrow down the number of examples in order to do a parameter sweep for each model within a reasonable time frame.
+2. select the variables we will use for the cost predictions. Dropping pieces that will easily identify the cost (such as fare and tip amounts), plus using the rates of community attributes instead of raw numbers where applicable.
+3. Coerce data to correct datatype for analysis.
+```{r cleaning}
+clean <- function(input){
+  input %>% select(c(-trip_id, -date_start, -date_end, -hm_start, -year, -fare, -tips, -extras, -trip_total_missing, -pickup_foreign.pop, -pickup_edu.total, -pickup_cit.total, -pickup_nodiploma.pop, -pickup_highschool.pop, -pickup_somecollege.pop, -pickup_assoc.pop, -pickup_bach.pop, -pickup_graduatedegree.pop, -pickup_race.total, -pickup_white.pop, -pickup_black.pop, -pickup_amindian.pop, -pickup_asian.pop, -pickup_pacific.pop, -pickup_other.pop, -pickup_vet.total, -pickup_veteran.pop, -pickup_tract, -pickup_census_tract, -pickup_community_area, -dropoff_census_tract, -dropoff_community_area, -dropoff_centroid_latitude, -dropoff_centroid_longitude, -pickup_centroid_latitude, -pickup_centroid_longitude)) %>% 
+        mutate(h_start = as.integer(h_start), pickup_median.age = as.numeric(pickup_median.age), pickup_median.income = as.numeric(pickup_median.income), pickup_hrs.worked = as.numeric(pickup_hrs.worked), fare_missing = as.logical(fare_missing), tips_missing = as.logical(tips_missing), extras_missing = as.logical(extras_missing), trip_seconds_missing = as.logical(trip_seconds_missing), id_ride = as.logical(id_ride))
+}
+
+input <- sample_n(input, size = floor(0.1 * nrow(input)), replace = F) %>% clean()
+        
+```
+
+Create train/test splits and attribute/outcome splits.
+```{r train/test}
+set.seed(42)
+sample <- sample.int(nrow(input), size = floor(0.5 * nrow(input)), replace = F)
+
+train <- input[sample,]
+test <- input[-sample,]
+rm(input)
+
+train.x <- train %>% select(-trip_total)
+train.y <- train %>% select(trip_total)
+test.x <- test %>% select(-trip_total)
+test.y <- test %>% select(trip_total) %>% as.matrix() %>% as.numeric()
+```
+
+Perform a parameter sweep for our three models: regularized regression, eXtreme gradient boosting, and random forests, including scaling the input data.
+```{r models}
+set.seed(123)
+
+  m    = "repeatedcv"
+  k    = 5
+  rep  = 3
+  metr = "RMSE"
+  pPro = c("center","scale")
+
+ 
+ glmnet.CV    = train(trip_total ~ ., 
+                  data = train,
+                  method     = "glmnet", 
+                  metric     = metr,
+                  trControl  = trainControl(method = m, number = k, repeats = rep, search = "random"),
+                  preProcess = pPro
+                 )
+ 
+set.seed(123)
+xgbLinear.CV  = train(trip_total ~ ., 
+                  data = train,
+                  method     = "xgbLinear", 
+                  metric     = metr,
+                  trControl  = trainControl(method = m, number = k, repeats = rep, search = "random"),
+                  preProcess = pPro
+                 )
+
+set.seed(123)
+rf.CV         = train(trip_total ~ .,
+                  data = sample_n(train, size = floor(0.1 * nrow(train))),
+                  method     = "ranger", 
+                  metric     = metr,
+                  trControl  = trainControl(method = m, number = k, repeats = rep, search = "random"),
+                  preProcess = pPro
+                 )
+```
+
+Compare the models, both on their validation set error and their test set error.
+```{r comparisons}
+results <- list(GLMNET = glmnet.CV, XGB = xgbLinear.CV, RF = rf.CV) %>% resamples()
+summary(results)
+
+png(filename = "Cost_ModelValEval.png")
+bwplot(results, layout = c(3, 1))
+while (!is.null(dev.list()))  dev.off()
+
+glm.predict <- predict.train(glmnet.CV, newdata = test.x)
+xgb.predict <- predict.train(xgbLinear.CV, newdata = test.x)
+rf.predict <- predict.train(rf.CV, newdata = test.x)
+
+model.rmse <- data.frame(Metric = as.character(), GLM = as.numeric(), XGB = as.numeric(), RF = as.numeric())
+
+model.rmse[1,] <- c("RMSE", RMSE(pred = glm.predict, obs = test.y), RMSE(pred = xgb.predict, obs = test.y), RMSE(pred = rf.predict, obs = test.y))
+
+xtable(model.rmse, caption = "Cost Model Evaluation", type = "latex")
+```
+
+As the models produce very similar errors, we decide to use the least complex model with glmnet. Here we apply a final round of tuning to create the best model and present the RMSE
+```{r finalmodel}
+
+set.seed(123)
+Final.CV  = train(trip_total ~ ., 
+                  data = train,
+                  method     = "glmnet", 
+                  metric     = metr,
+                  trControl  = trainControl(method = m, number = k, repeats = rep, search = "random"),
+                  preProcess = pPro,
+                  tuneLength = 20
+                )
+
+Final.predict <- predict.train(Final.CV, newdata = test.x)
+final.rmse <- RMSE(pred = Final.predict, obs = test.y)
+final.mae <- mae(actual = test.y, predicted = Final.predict)
+```
+
+Finally, we examine the variable importance of the attributes used by the model.
+```{r}
+var.imp <- Final.CV$finalModel %>% varImp() %>% rownames_to_column(var = "Variable") %>% arrange(desc(Overall))
+xtable(var.imp[1:10,], type = "latex")
+
+png(filename = "Cost_VarImp.png")
+plot(Final.CV$finalModel, xvar = c("norm", "lambda", "dev"),
+  label = FALSE)
+dev.off()
+```
+
